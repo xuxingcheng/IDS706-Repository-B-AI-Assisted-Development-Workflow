@@ -17,12 +17,12 @@ def diagnostics(prices, directory, order=(0, 0)):
                       arch_pvalue=het_arch(r, nlags=10)[1], acf=acf(r, nlags=20).tolist(),
                       pacf=pacf(r, nlags=20).tolist(), training_end=str(prices.index[-1].date()))
         residuals = {}
-        for name in ('ARIMA', 'GARCH'):
+        for name in ('ARIMA', 'GARCH', 'AR'):
             try:
                 fit = fit_model(name, r, order)
-                residual = np.asarray(fit.resid if name == 'ARIMA' else fit.std_resid)
+                residual = np.asarray(fit.std_resid if name == 'GARCH' else fit.resid)
                 residuals[name] = residual
-                result[name] = dict(ljung_box_pvalue=acorr_ljungbox(residual, lags=[10], model_df=sum(order) if name == 'ARIMA' else 0, return_df=True).lb_pvalue.iloc[0],
+                result[name] = dict(ljung_box_pvalue=acorr_ljungbox(residual, lags=[10], model_df=1 if name == 'AR' else sum(order) if name == 'ARIMA' else 0, return_df=True).lb_pvalue.iloc[0],
                                     squared_ljung_box_pvalue=acorr_ljungbox(residual ** 2, lags=[10], return_df=True).lb_pvalue.iloc[0],
                                     arch_pvalue=het_arch(residual, nlags=10)[1])
             except ValueError as exc:
@@ -38,7 +38,7 @@ def stability(prices, config, directory):
     training = prices.loc[:config['train_end']]
     for offset in (0, 20):
         history = training.iloc[:len(training)-offset]
-        for model in ('Naive', 'ARIMA', 'GARCH'):
+        for model in ('Naive', 'ARIMA', 'GARCH', 'AR'):
             a = forecast(model, history, 20, config['seed'], config['simulations'])
             b = forecast(model, history, 20, config['seed'] + 1, config['simulations'] * 2)
             for h in config['horizons']:

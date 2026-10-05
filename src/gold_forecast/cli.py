@@ -19,7 +19,7 @@ def initialize(config, directory, quality):
     save_json(directory / 'manifest.json', dict(run_id=directory.name, input_sha256=quality['sha256'],
         config=config, lockfile_sha256=hashlib.sha256(Path('uv.lock').read_bytes()).hexdigest() if Path('uv.lock').exists() else None, timestamp_utc=datetime.now(timezone.utc).isoformat(), python=platform.python_version(),
         packages={p: version(p) for p in ['gold-forecast', 'numpy', 'pandas', 'scipy', 'statsmodels', 'arch', 'matplotlib']},
-        seed_rule='base + origin_offset * 31 + model_index; final base + 100000 + model_index',
+        seed_rule='base + origin_offset * 31 + model_index; final base + 100000 + model_index; Naive=0, ARIMA=1, GARCH=2, AR=3',
         variance_units='percentage log-return squared; decimal variance divides by 10000',
         numerical_tolerance='same lockfile/platform: rtol=1e-8, atol=1e-10',
         retry_policy='ARIMA maxiter 300, then same specification/start parameters maxiter 1000; GARCH no retry'))

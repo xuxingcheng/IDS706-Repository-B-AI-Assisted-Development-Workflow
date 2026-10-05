@@ -4,7 +4,14 @@ import numpy as np
 import pandas as pd
 
 VARIANCE_FLOOR = 1e-12  # percentage-return squared units
-MODELS = ['Naive', 'ARIMA', 'GARCH']
+LEGACY_MODELS = ['Naive', 'ARIMA', 'GARCH']
+# Append models to preserve the original models' recorded seed offsets.
+MODELS = [*LEGACY_MODELS, 'AR']
+
+
+def model_set(frame):
+    """Old artifacts remain readable; AR rows opt into four-model pairing."""
+    return MODELS if frame.model.eq('AR').any() else LEGACY_MODELS
 SCORE_FIELDS = ['mae', 'rmse', 'error_min', 'error_max', 'error_median', 'error_p05', 'error_p95', 'qlike'] + [f'{name}{level}' for level in (80, 95) for name in ('coverage', 'width', 'interval_score')]
 
 
@@ -23,7 +30,7 @@ def qlike(realized_return, variance):
 def common_pairs(frame):
     valid = frame[frame.fit_status.eq('ok') & frame.actual_price.notna()].copy()
     counts = valid.groupby(['origin', 'horizon']).model.nunique()
-    keys = counts[counts == len(MODELS)].index
+    keys = counts[counts == len(model_set(frame))].index
     return valid.set_index(['origin', 'horizon']).loc[lambda x: x.index.isin(keys)].reset_index()
 
 
@@ -77,7 +84,7 @@ def paired_analysis(frame, config):
             f[f'interval{level}'] = interval_score(f.actual_price, f[f'lower{level}'], f[f'upper{level}'], 1-level/100)
         for loss in ('absolute_loss', 'interval80', 'interval95'):
             pivot = f.pivot(index='origin', columns='model', values=loss).sort_index()
-            for a, b in combinations(MODELS, 2):
+            for a, b in combinations(model_set(frame), 2):
                 d = pivot[a] - pivot[b]
                 for block in config['bootstrap_blocks']:
                     seed = config['seed'] + int(horizon) * 100 + block

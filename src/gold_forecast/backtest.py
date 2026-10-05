@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from .data import origins
 from .models import forecast, FORECAST_FIELDS
-from .metrics import MODELS
+from .metrics import MODELS, LEGACY_MODELS
 
 
 def save_json(path, value):
@@ -65,11 +65,11 @@ def tune(prices, config, directory, workers=1):
     if eligible.empty:
         raise ValueError('No ARIMA candidate has complete valid validation coverage; inspect tuning failures')
     best = eligible.iloc[0]
-    spec = dict(order=[int(best.p), int(best.q)], criterion='validation one-session price MAE',
+    spec = dict(order=[int(best.p), int(best.q)], models=MODELS, ar_order=1, criterion='validation one-session price MAE',
                 config=config, selected_file=best.file, validation_end=str(validation.index[-1].date()))
     save_json(frozen, spec)
     selected = pd.read_csv(directory / best.file)
-    others = rolling(validation, start, len(validation), config, 'validation', directory.name, spec['order'], ['Naive', 'GARCH'])
+    others = rolling(validation, start, len(validation), config, 'validation', directory.name, spec['order'], ['Naive', 'GARCH', 'AR'])
     pd.concat([selected, others], ignore_index=True).to_csv(directory / 'validation_forecasts.csv', index=False)
     return spec
 
@@ -80,15 +80,15 @@ def evaluate(prices, spec, directory):
         raise ValueError('Test artifacts already exist; refusing to overwrite evaluation')
     config = spec['config']
     start = int((prices.index <= config['validation_end']).sum())
-    frame = rolling(prices, start, len(prices), config, 'test', directory.name, spec['order'])
+    frame = rolling(prices, start, len(prices), config, 'test', directory.name, spec['order'], spec.get('models', LEGACY_MODELS))
     frame.to_csv(path, index=False)
     return frame
 
 
-def final_forecasts(prices, spec, directory):
+def final_forecasts(prices, spec, directory, models=None):
     rows = []
     config = spec['config']
-    for model in MODELS:
+    for model in (models if models is not None else spec.get('models', LEGACY_MODELS)):
         seed = config['seed'] + 100000 + MODELS.index(model)
         result = forecast(model, prices, 20, seed, config['simulations'], spec['order'])
         for h in range(1, 21):
@@ -96,4 +96,6 @@ def final_forecasts(prices, spec, directory):
                 training_end=str(prices.index[-1].date()), horizon=h, target_date=None, actual_price=None,
                 actual_return_percent=None, fit_status=result.status, seed=seed,
                 fit_details=json.dumps(result.details), **result.values.get(h, dict.fromkeys(FORECAST_FIELDS, np.nan))))
-    pd.DataFrame(rows).to_csv(directory / 'final_forecasts.csv', index=False)
+    frame = pd.DataFrame(rows)
+    frame.to_csv(directory / 'final_forecasts.csv', index=False)
+    return frame

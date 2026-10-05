@@ -187,3 +187,22 @@ Success means a reproducible, leakage-controlled comparison and honest forecast 
 ## 7. User-requested extension: calendar-year 2026 plot
 
 After the initial experiment, the user requested a final plot including the observed 2024–2025 trend and forecasts through 2026. Implemented as a separate `project-2026` command and `projection_2026/` artifacts, appended to the notebook and standalone reports. Future dates use an explicitly assumed published NYSE holiday schedule; dataset provenance and the historical calendar remain unverified. Observed prices stop on August 14, 2025. Everything later is a historical as-of projection, with no claimed 2026 actuals or accuracy. The original frozen 1/5/20-session evaluation remains separate.
+
+## 8. User-requested extension: AR reference
+
+Add a fixed AR(1) with a constant on percentage log returns and constant Gaussian
+innovation variance. Implement it as return ARIMA(1,0,0), using the same exact
+joint conditional covariance and path-to-price reconstruction. The lag is fixed
+without tuning, and the last-price baseline remains available. Append AR's seed
+offset as 3 so the original Naive/ARIMA/GARCH offsets do not change.
+
+New runs freeze all four model names. Include AR in validation, test, final
+forecasts, training diagnostics, precision audits, plots, metrics, paired
+inference, and the optional 2026 projection. Compare all four models on common
+valid pairs; AR failures must reduce coverage explicitly.
+
+Existing three-model experiments can be extended into a new directory using
+`scripts/add_ar_reference.py`. Preserve their original forecasts and selected
+ARIMA order; record source provenance and the current environment. Label AR
+comparisons from this extension as retrospective/exploratory because the model
+was added after the original test evaluation. Never overwrite the source run.

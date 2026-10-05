@@ -29,3 +29,15 @@ def test_short_bootstrap_series_is_flagged():
     result = paired_analysis(pd.DataFrame(rows), dict(seed=1,bootstrap_blocks=[20],bootstrap_samples=50))
     assert result.inference_status.eq('limited_sample').all()
     assert result.effective_block.eq(5).all()
+
+
+def test_ar_failure_excludes_pair_for_every_model():
+    import pandas as pd
+    from gold_forecast.metrics import common_pairs, MODELS
+    rows = pd.DataFrame([dict(model=m, origin=f'2024-01-0{day}', horizon=1,
+                             actual_price=100., fit_status='failed' if m == 'AR' and day == 1 else 'ok')
+                         for day in (1, 2) for m in MODELS])
+    paired = common_pairs(rows)
+    assert len(paired) == 4
+    assert paired.origin.eq('2024-01-02').all()
+    assert set(paired.model) == set(MODELS)

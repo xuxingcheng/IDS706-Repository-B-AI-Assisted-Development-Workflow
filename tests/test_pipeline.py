@@ -19,9 +19,9 @@ def fixture_data():
     return pd.Series(100*np.exp(np.cumsum(r)/100), index=pd.bdate_range('2020-01-01', periods=280))
 
 
-def test_end_to_end(tmp_path):
+def test_end_to_end(tmp_path, monkeypatch):
     prices = fixture_data()
-    c = dict(train_end=str(prices.index[229].date()), validation_end=str(prices.index[254].date()),
+    c = dict(target='GLD', input='fixture.csv', train_end=str(prices.index[229].date()), validation_end=str(prices.index[254].date()),
              horizons=[1,5,20], orders=[0], simulations=10000, seed=8,
              bootstrap_blocks=[20,10,40], bootstrap_samples=100)
     d = tmp_path/'smoke'
@@ -30,10 +30,10 @@ def test_end_to_end(tmp_path):
     test = evaluate(prices, spec, d)
     final_forecasts(prices, spec, d)
     scores = generate(d)
-    assert set(scores.model) == {'Naive','ARIMA','GARCH'}
-    assert scores[scores.horizon == 1].attempted.tolist() == [25]*3
-    assert scores[scores.horizon == 5].attempted.tolist() == [21]*3
-    assert scores[scores.horizon == 20].attempted.tolist() == [6]*3
+    assert set(scores.model) == {'Naive','ARIMA','GARCH','AR'}
+    assert scores[scores.horizon == 1].attempted.tolist() == [25]*4
+    assert scores[scores.horizon == 5].attempted.tolist() == [21]*4
+    assert scores[scores.horizon == 20].attempted.tolist() == [6]*4
     assert (test.training_end == test.origin).all()
     assert (test.origin < test.target_date).all()
     for row in test.itertuples():
@@ -61,6 +61,30 @@ def test_end_to_end(tmp_path):
     # A rerun on the same frozen settings reproduces all forecast numbers exactly.
     repeated = rolling(prices, 255, 280, c, 'test', d.name, spec['order'])
     pd.testing.assert_frame_equal(test, repeated)
+    # Extending a legacy run must preserve original records and source files.
+    from gold_forecast import reference
+    legacy = tmp_path / 'legacy'
+    legacy.mkdir()
+    legacy_spec = {k: v for k, v in spec.items() if k not in ('models', 'ar_order')}
+    save_json(legacy / 'frozen.json', legacy_spec)
+    (legacy / 'manifest.json').write_bytes((d / 'manifest.json').read_bytes())
+    for phase in ('validation', 'test', 'final'):
+        frame = pd.read_csv(d / f'{phase}_forecasts.csv')
+        frame[frame.model.ne('AR')].to_csv(legacy / f'{phase}_forecasts.csv', index=False)
+    originals = {p.name: p.read_bytes() for p in legacy.iterdir()}
+    monkeypatch.setattr(reference, 'load_data', lambda *args: (
+        prices.rename('GLD').to_frame(), json.loads((d / 'quality_report.json').read_text())))
+    extended = reference.add_ar_reference(legacy, tmp_path / 'extended')
+    for filename, content in originals.items():
+        assert (legacy / filename).read_bytes() == content
+    for phase in ('validation', 'test', 'final'):
+        original = pd.read_csv(legacy / f'{phase}_forecasts.csv').drop(columns='run_id')
+        expanded = pd.read_csv(extended / f'{phase}_forecasts.csv')
+        assert set(expanded.model) == {'Naive', 'ARIMA', 'GARCH', 'AR'}
+        pd.testing.assert_frame_equal(original, expanded[expanded.model.ne('AR')].drop(columns='run_id'))
+    assert 'retrospective and exploratory' in (extended / 'comparison.html').read_text()
+    with pytest.raises(FileExistsError):
+        reference.add_ar_reference(legacy, extended)
 
 
 def test_tuning_cannot_access_future(monkeypatch, tmp_path):
@@ -110,6 +134,6 @@ def test_models_receive_identical_histories(monkeypatch):
     assert rows.fit_status.eq('failed').all()
     assert 'point_price' in rows and rows.point_price.isna().all()
     for values in histories.values():
-        assert [x[0] for x in values] == ['Naive','ARIMA','GARCH']
+        assert [x[0] for x in values] == ['Naive','ARIMA','GARCH','AR']
         for _, history in values[1:]:
             pd.testing.assert_series_equal(history, values[0][1])

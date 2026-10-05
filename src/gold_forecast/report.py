@@ -8,9 +8,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from .projection import extension_section
-from .metrics import MODELS, common_pairs, summarize, paired_analysis
+from .metrics import LEGACY_MODELS, model_set, common_pairs, summarize, paired_analysis
 
-COLORS = {'Naive': '#6b7280', 'ARIMA': '#1565c0', 'GARCH': '#c34b13'}
+COLORS = {'Naive': '#6b7280', 'ARIMA': '#1565c0', 'GARCH': '#c34b13', 'AR': '#238b45'}
 
 
 def interpretation(scores, paired):
@@ -18,7 +18,7 @@ def interpretation(scores, paired):
     if one.empty:
         return 'No valid common forecast pairs; no winner can be assessed.'
     leader = one.iloc[0].model
-    model_leader = one[one.model != 'Naive'].iloc[0].model
+    model_leader = one[one.model.isin(['ARIMA', 'GARCH'])].iloc[0].model
     text = [f'Lowest one-session price MAE: {leader}. Among ARIMA and GARCH: {model_leader}.']
     primary = paired[(paired.horizon == 1) & (paired.loss == 'absolute_loss') & (paired.block == 20)]
     for row in primary.itertuples():
@@ -39,9 +39,14 @@ def interpretation(scores, paired):
 
 
 def generate(directory):
-    config = json.loads((directory / 'frozen.json').read_text())['config']
+    spec = json.loads((directory / 'frozen.json').read_text())
+    config = spec['config']
     test = pd.read_csv(directory / 'test_forecasts.csv')
     final = pd.read_csv(directory / 'final_forecasts.csv') if (directory / 'final_forecasts.csv').exists() else pd.DataFrame()
+    models = model_set(test)
+    if set(test.model) != set(spec.get('models', LEGACY_MODELS)):
+        raise ValueError('Forecast model set differs from frozen run')
+    fitted_models = [m for m in models if m != 'Naive']
     scores = summarize(test)
     paired = paired_analysis(test, config)
     scores.to_csv(directory / 'scores.csv', index=False)
@@ -75,7 +80,7 @@ def generate(directory):
         f = common[common.horizon == h].sort_values('target_date')
         actual = f.drop_duplicates('target_date')
         ax.plot(pd.to_datetime(actual.target_date), actual.actual_price, color='black', label='Actual', linewidth=1)
-        for model in MODELS:
+        for model in models:
             m = f[f.model == model]
             ax.plot(pd.to_datetime(m.target_date), m.point_price, color=COLORS[model], label=model, alpha=.75)
         ax.set(title=f'{h}-session held-out prices', ylabel='GLD proxy (unverified units)')
@@ -84,15 +89,15 @@ def generate(directory):
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 4))
     for ax, metric in zip(axes, ['mae', 'rmse']):
-        pivot = scores.pivot(index='horizon', columns='model', values=metric).reindex(columns=MODELS)
-        pivot.plot.bar(ax=ax, color=[COLORS[m] for m in MODELS], rot=0)
+        pivot = scores.pivot(index='horizon', columns='model', values=metric).reindex(columns=models)
+        pivot.plot.bar(ax=ax, color=[COLORS[m] for m in models], rot=0)
         ax.set(title=f'{metric.upper()} — lower is better', xlabel='Observed-session horizon', ylabel='GLD proxy units')
     save(fig, 'accuracy', 'Price error metrics; these are not accuracy percentages.')
 
     fig, axes = plt.subplots(len(horizons), 2, figsize=(13, 10))
     for row, h in enumerate(horizons):
         groups = []
-        for model in MODELS:
+        for model in models:
             f = common[(common.horizon == h) & (common.model == model)].sort_values('target_date')
             errors = f.actual_price - f.point_price
             groups.append(errors.to_numpy())
@@ -100,16 +105,16 @@ def generate(directory):
         axes[row, 0].axhline(0, color='black', lw=.8)
         axes[row, 0].set(title=f'{h}-session signed errors: actual − predicted', ylabel='GLD proxy units')
         axes[row, 0].legend(ncol=3)
-        boxes = axes[row, 1].boxplot(groups, tick_labels=MODELS, patch_artist=True)
-        for box, model in zip(boxes['boxes'], MODELS):
+        boxes = axes[row, 1].boxplot(groups, tick_labels=models, patch_artist=True)
+        for box, model in zip(boxes['boxes'], models):
             box.set_facecolor(COLORS[model])
         axes[row, 1].axhline(0, color='black', lw=.8)
         axes[row, 1].set(title=f'{h}-session observed error distribution', ylabel='GLD proxy units')
     save(fig, 'errors', 'Historical error ranges describe observed errors; they are not forward prediction intervals.')
 
     for h in horizons:
-        fig, axes = plt.subplots(2, 1, figsize=(12, 7), sharex=True, sharey=True)
-        for ax, model in zip(axes, ['ARIMA', 'GARCH']):
+        fig, axes = plt.subplots(len(fitted_models), 1, figsize=(12, 3.5 * len(fitted_models)), sharex=True, sharey=True)
+        for ax, model in zip(axes, fitted_models):
             f = common[(common.horizon == h) & (common.model == model)].sort_values('target_date')
             x = pd.to_datetime(f.target_date)
             for level, alpha in [(95, .15), (80, .3)]:
@@ -118,13 +123,13 @@ def generate(directory):
             ax.plot(x, f.point_price, color=COLORS[model], label='Point')
             ax.set(title=f'{model}: {h}-session test prediction intervals', ylabel='GLD proxy units')
             ax.legend(ncol=4)
-        save(fig, f'intervals_{h}', f'{h}-session prediction intervals: matching ARIMA/GARCH axes, fitted-parameter Gaussian simulation.')
+        save(fig, f'intervals_{h}', f'{h}-session prediction intervals: matching model axes, fitted-parameter Gaussian simulation.')
 
     fig, axes = plt.subplots(2, 3, figsize=(14, 8))
     for row, level in enumerate((80, 95)):
         for col, metric in enumerate((f'coverage{level}', f'width{level}', f'interval_score{level}')):
-            scores.pivot(index='horizon', columns='model', values=metric).reindex(columns=MODELS).plot.bar(
-                ax=axes[row, col], color=[COLORS[m] for m in MODELS], rot=0)
+            scores.pivot(index='horizon', columns='model', values=metric).reindex(columns=models).plot.bar(
+                ax=axes[row, col], color=[COLORS[m] for m in models], rot=0)
             axes[row, col].set_title(metric)
             if col == 0:
                 axes[row, col].axhline(level / 100, color='black', ls='--', label='Nominal')
@@ -133,8 +138,8 @@ def generate(directory):
     save(fig, 'uncertainty_scores', 'Coverage compared with nominal dashed lines, interval widths, and interval scores (lower score is better).')
 
     if not final.empty:
-        fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
-        for ax, model in zip(axes, ['ARIMA', 'GARCH']):
+        fig, axes = plt.subplots(1, len(fitted_models), figsize=(6 * len(fitted_models), 5), sharey=True)
+        for ax, model in zip(axes, fitted_models):
             f = final[(final.model == model) & final.fit_status.eq('ok')]
             for level, alpha in [(95, .15), (80, .3)]:
                 ax.fill_between(f.horizon, f[f'lower{level}'], f[f'upper{level}'], color=COLORS[model], alpha=alpha, label=f'{level}% PI')
@@ -164,9 +169,13 @@ def generate(directory):
         'Bootstrap intervals use paired moving blocks; 20 sessions is primary, 10 and 40 provide sensitivity. '
         'Bootstrap rows with fewer than two requested blocks are flagged limited_sample and cannot support a winner claim. '
         'Yearly results are descriptive and do not retune models. Historical error ranges and forward prediction intervals have different meanings.')
+    if 'AR' in models:
+        limitations += ' AR is a fixed AR(1) reference with a constant on percentage log returns and Gaussian innovations; its lag is not tuned.'
+    if spec.get('reference_extension'):
+        limitations += ' AR was added after the original evaluation; comparisons involving AR are retrospective and exploratory.'
     body = f'''<!doctype html><html lang="en"><meta charset="utf-8"><title>GLD forecasting comparison</title>
 <style>body{{font:16px system-ui;max-width:1250px;margin:40px auto;padding:0 24px;color:#202830}}img{{width:100%}}table{{border-collapse:collapse;font-size:12px}}td,th{{padding:6px;border:1px solid #ddd}}.table{{overflow:auto}}figure{{margin:36px 0}}p{{line-height:1.6}}</style>
-<h1>GLD proxy: ARIMA, GARCH and naive comparison</h1>
+<h1>GLD proxy: {', '.join(models)} comparison</h1>
 <p>Run {html.escape(directory.name)}. Test targets: {test.target_date.min()} through {test.target_date.max()}. Input cutoff: {quality['end']}. Split counts: {quality['split_counts']}. Units unverified.</p>
 <h2>Findings</h2><p>{html.escape(message)}</p><h2>Protocol and limitations</h2><p>{limitations}</p>
 <h2>Exact accuracy, empirical error ranges and uncertainty metrics</h2><div class="table">{scores.to_html(index=False, float_format=lambda x: f'{x:.6f}')}</div>

@@ -12,7 +12,7 @@ def prices():
     return pd.Series(100*np.exp(np.cumsum(r)/100), index=pd.bdate_range('2019-01-01', periods=350))
 
 
-@pytest.mark.parametrize('model', ['Naive', 'ARIMA', 'GARCH'])
+@pytest.mark.parametrize('model', ['Naive', 'ARIMA', 'GARCH', 'AR'])
 def test_forecast_contract_and_reproducibility(prices, model):
     a = forecast(model, prices, 20, 15)
     b = forecast(model, prices, 20, 15)
@@ -38,6 +38,18 @@ def test_arima_joint_covariance(prices):
     np.testing.assert_allclose(np.cov(sim), cov, atol=.035)
 
 
+def test_ar_reference_is_fixed_ar1(prices):
+    ar = forecast('AR', prices, 20, 55, order=(3, 3))
+    equivalent = forecast('ARIMA', prices, 20, 55, order=(1, 0))
+    assert ar.status == equivalent.status == 'ok'
+    assert ar.values == equivalent.values
+    assert ar.details['order'] == [1, 0, 0]
+    fit = fit_model('AR', returns(prices), (3, 3))
+    mu, phi = fit.params[:2]
+    expected = mu + phi ** np.arange(1, 21) * (returns(prices)[-1] - mu)
+    np.testing.assert_allclose(fit.forecast(20), expected, rtol=1e-8, atol=1e-10)
+
+
 def test_garch_variance_library_and_recursion():
     rng = np.random.default_rng(90)
     r, v, last = [], 1., 0.
@@ -56,7 +68,7 @@ def test_garch_variance_library_and_recursion():
     np.testing.assert_allclose(actual[1:], params['omega']+(params['alpha[1]']+params['beta[1]'])*actual[:-1])
 
 
-@pytest.mark.parametrize('model', ['Naive', 'ARIMA', 'GARCH'])
+@pytest.mark.parametrize('model', ['Naive', 'ARIMA', 'GARCH', 'AR'])
 def test_future_mutations_do_not_change_origin(prices, model):
     changed = prices.copy()
     changed.iloc[300:] *= 5

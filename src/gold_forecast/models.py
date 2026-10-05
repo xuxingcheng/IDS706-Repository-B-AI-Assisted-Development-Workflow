@@ -19,7 +19,9 @@ class Forecast:
 
 
 def fit_model(name, r, order):
-    if name == 'ARIMA':
+    if name in ('AR', 'ARIMA'):
+        # Fixed AR(1) reference; never reuse the validation-selected ARIMA order.
+        order = (1, 0) if name == 'AR' else order
         # Fixed training-only retry policy: increase optimizer iterations, same specification.
         fit = ARIMA(r, order=(order[0], 0, order[1]), trend='c').fit(method_kwargs={'maxiter': 300})
         if not fit.mle_retvals.get('converged', False):
@@ -28,6 +30,8 @@ def fit_model(name, r, order):
         if not fit.mle_retvals.get('converged', False):
             raise ValueError('ARIMA optimizer did not converge after fixed retry')
         return fit
+    if name != 'GARCH':
+        raise ValueError(f'Unknown fitted model: {name}')
     fit = arch_model(r, mean='Constant', vol='GARCH', p=1, q=1, dist='normal', rescale=False).fit(disp='off')
     p = fit.params
     if fit.convergence_flag or p['omega'] <= 0 or min(p['alpha[1]'], p['beta[1]']) < 0 or p['alpha[1]'] + p['beta[1]'] >= 1:
@@ -55,9 +59,12 @@ def arima_distribution(fit, horizon):
 
 
 def forecast(name, prices, horizon, seed, simulations=10000, order=(0, 0)):
-    if name not in ('Naive', 'ARIMA', 'GARCH') or horizon < 1 or simulations < 10000:
+    if name not in ('Naive', 'ARIMA', 'GARCH', 'AR') or horizon < 1 or simulations < 10000:
         raise ValueError('Known model, positive horizon and at least 10000 paths required')
     details = {'seed': int(seed), 'simulations': simulations}
+    if name == 'AR':
+        details['specification'] = 'Fixed AR(1) with constant on percentage log returns; Gaussian innovations'
+        details['order'] = [1, 0, 0]
     caught = []
     try:
         with warnings.catch_warnings(record=True) as caught:
@@ -73,9 +80,9 @@ def forecast(name, prices, horizon, seed, simulations=10000, order=(0, 0)):
                 details['parameters'] = {'variance_percent2': float(variance[0])}
             else:
                 fit = fit_model(name, r, order)
-                details.update(parameters=dict(zip(fit.model.param_names, map(float, fit.params))) if name == 'ARIMA' else fit.params.to_dict(),
+                details.update(parameters=dict(zip(fit.model.param_names, map(float, fit.params))) if name in ('AR', 'ARIMA') else fit.params.to_dict(),
                                aic=float(fit.aic), bic=float(fit.bic))
-                if name == 'ARIMA':
+                if name in ('AR', 'ARIMA'):
                     mean, covariance = arima_distribution(fit, horizon)
                     paths = mean + z @ np.linalg.cholesky(covariance).T
                     variance = np.diag(covariance)

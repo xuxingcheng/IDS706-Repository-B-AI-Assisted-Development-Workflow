@@ -1,8 +1,35 @@
 # GLD proxy forecasting
 
-A reproducible local comparison of a last-price baseline, return ARIMA and constant-mean GARCH(1,1), implementing [the architecture plan](docs/plan.md). The primary endpoint is one-observed-session price MAE. Five- and twenty-session errors, interval calibration and scores, and one-session QLIKE are separate endpoints.
+A reproducible local comparison of a last-price baseline, fixed return AR(1) reference, return ARIMA and constant-mean GARCH(1,1), implementing [the architecture plan](docs/plan.md). The primary endpoint is one-observed-session price MAE. Five- and twenty-session errors, interval calibration and scores, and one-session QLIKE are separate endpoints.
 
-## Verified results
+## AR reference comparison
+
+New runs include **AR**, a fixed AR(1) with a constant on percentage log returns,
+Gaussian innovations, and the same expanding histories and conditional-path
+forecast contract. Its lag is fixed at one, independent of ARIMA order selection.
+The existing Naive last-price baseline remains the reference for percentage
+improvement. AR appears in accuracy, error, interval, bootstrap, final-forecast,
+and optional 2026 projection outputs. Old three-model runs remain readable.
+
+Open `outputs/full-20261004-ar/comparison.html` for the expanded saved comparison.
+All 4,768 eligible test rows are valid. AR MAE is 2.0183, 4.2473, and 7.9119 at
+1, 5, and 20 sessions respectively. The 37-test suite passes. This reference was
+added after the original evaluation, so AR comparisons are retrospective and
+exploratory. The original three-model forecasts and order selection are preserved.
+
+To add AR to another completed three-model run without repeating ARIMA tuning:
+
+```sh
+uv run python scripts/add_ar_reference.py outputs/my-analysis outputs/my-analysis-ar
+uv run python scripts/verify_run.py outputs/my-analysis-ar
+```
+
+The destination must not exist. The extension records the source manifest and
+current environment, retains original model forecasts, and regenerates reports.
+If the source includes the optional 2026 projection, that view is regenerated
+with AR too. Use the new directory as `GOLD_RUN_DIR` when running the notebook.
+
+## Original three-model verified results
 
 The complete experiment and an independent repeat selected return ARIMA `(3,0,1)`. All 3,576 eligible test forecast rows were valid. One-session MAE was 2.0169 for GARCH, 2.0241 for ARIMA and 2.0217 for naive, in unverified GLD proxy units. The ARIMA–GARCH primary comparison was statistically inconclusive. GARCH slightly beat naive at one session; ARIMA had lower MAE and RMSE at 5 and 20 sessions. GARCH had better one-session interval scores, while ARIMA had better 5/20-session interval scores.
 
@@ -92,6 +119,11 @@ This adds a final section to `comparison.html` and `report.html`, and the notebo
 For this requested calendar-year view only, future dates **assume** the [published NYSE/NYSE Arca holiday schedule](https://ir.theice.com/press/news-details/2024/NYSE-Group-Announces-2025-2026-and-2027-Holiday-and-Early-Closings-Calendar/default.aspx), checked against the [2026 NYSE calendar](https://www.nyse.com/trade/hours-calendars). Weekends and full-day closures are excluded; early closes count as sessions. This does not verify the CSV's instrument or historical trading calendar. Exceptional closures and missing future observations are not modeled. The command deliberately supports only the supplied August 14, 2025 cutoff.
 
 The optional extension saves `projection_2026/forecast_2024_2026.png` and `.svg`, `forecasts.csv`, `observations.csv`, and `metadata.json` inside the run directory. It refits the already selected specifications, uses 10,000 paths per model, and keeps the original test and 20-step forecast records separate. On this run, December 2026 median projections are approximately **349.5 (ARIMA)** and **330.0 (GARCH)** in unverified GLD proxy units; their wide bands are more informative than those point values alone.
+
+## Independent testing review
+
+See [the independent review](docs/testing-review.md) for the audit correction,
+33-test verification, clean installation and notebook checks, and remaining limitations.
 
 ## Manual Smoketest
 Manual Smoketest passed. The ipynb and all other scripts are running well manually. Data Reading is normal.

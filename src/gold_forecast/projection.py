@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from .models import forecast
+from .metrics import MODELS, LEGACY_MODELS
 
 CALENDAR_SOURCE = 'https://ir.theice.com/press/news-details/2024/NYSE-Group-Announces-2025-2026-and-2027-Holiday-and-Early-Closings-Calendar/default.aspx'
 # Published full-day closures in the supported forecast window. Early closes remain sessions.
@@ -38,8 +39,9 @@ def generate_projection(prices, spec, directory):
     dates = projection_dates(prices.index[-1])
     config = spec['config']
     rows, fits = [], {}
-    for i, model in enumerate(['ARIMA', 'GARCH'], start=1):
-        seed = config['seed'] + 100000 + i
+    models = [m for m in spec.get('models', LEGACY_MODELS) if m != 'Naive']
+    for model in models:
+        seed = config['seed'] + 100000 + MODELS.index(model)
         result = forecast(model, prices, len(dates), seed, config['simulations'], spec['order'])
         fits[model] = dict(status=result.status, **result.details)
         if result.status != 'ok':
@@ -61,9 +63,11 @@ def generate_projection(prices, spec, directory):
     # Plot persisted records so exported data and the figure agree.
     predicted = pd.read_csv(target / 'forecasts.csv', parse_dates=['target_date'])
     observed = pd.read_csv(target / 'observations.csv', index_col=0, parse_dates=True).observed_price
-    fig, axes = plt.subplots(2, 1, figsize=(13, 8), sharex=True, sharey=True)
+    fig, axes = plt.subplots(len(models), 1, figsize=(13, 4 * len(models)), sharex=True, sharey=True)
     origin = observed.index[-1]
-    for ax, (model, color) in zip(axes, [('ARIMA', '#1565c0'), ('GARCH', '#c34b13')]):
+    colors = {'ARIMA': '#1565c0', 'GARCH': '#c34b13', 'AR': '#238b45'}
+    for ax, model in zip(axes, models):
+        color = colors[model]
         f = predicted[predicted.model == model]
         x = pd.DatetimeIndex([origin, *f.target_date])
         def anchored(field):
@@ -105,5 +109,5 @@ def extension_section(directory):
     encoded = base64.b64encode(path.read_bytes()).decode()
     return (f'<section id="projection-2026"><h2>2024–2025 trend and forecasts through 2026</h2>'
             f'<p>{NOTE}</p><p>Calendar reference: <a href="{CALENDAR_SOURCE}">NYSE published holiday schedule</a>.</p>'
-            f'<img alt="Observed 2024–2025 GLD proxy prices and ARIMA/GARCH projections through 2026" '
+            f'<img alt="Observed 2024–2025 GLD proxy prices and model projections through 2026" '
             f'src="data:image/png;base64,{encoded}"></section>')
