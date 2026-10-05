@@ -1,15 +1,15 @@
 # Gold forecasting architecture plan
 
-Status: finalized implementation plan; no models have been implemented or evaluated.
+Status: implemented; see [implementation and verification notes](implementation.md) for execution evidence and limitations.
 Prepared: October 4, 2026.
 
 ## 1. Objective and requirements
 
 Build a reproducible Python analysis that forecasts a gold-price proxy using ARIMA and a mean model with GARCH volatility, evaluates both on unseen observations, and explains which performs better for price prediction and uncertainty estimation. A finding that neither beats a simple baseline is a valid outcome.
 
-### Current project evidence
+### Project evidence recorded during planning
 
-- The only existing project file is `gold_data_2015_25.csv`; there is no application, notebook, dependency configuration, test suite, or Git repository in this directory.
+- At planning time, the only existing project file was `gold_data_2015_25.csv`; no application, notebook, dependency configuration, or test suite existed yet.
 - The CSV contains 2,666 observations from January 2, 2015 through August 14, 2025, with columns `Date`, `SPX`, `GLD`, `USO`, `SLV`, and `EUR/USD`.
 - Inspection found ascending, unique dates, no weekend observations, no blank cells, and finite positive numeric values. This does not establish that every expected trading session is present.
 - `GLD` ranges from 100.50 to approximately 316.29. Its provider, currency, price field, adjustment policy, and licensing are undocumented.
@@ -183,3 +183,7 @@ Implementation order: establish data contract and baseline; add model adapters; 
 8. Open the standalone comparison report without the notebook or a server and verify all embedded plots render. Check that both models appear at every horizon, plotted values match exported CSVs, error signs and quantiles are correct, interval coverage matches recorded bounds, and final forecasts are excluded from measured accuracy. Visually inspect legends, axis units, consistent scales, and the distinction between observed error ranges and prediction intervals.
 
 Success means a reproducible, leakage-controlled comparison and honest forecast reporting—not a predetermined winning model or accuracy threshold.
+
+## 7. User-requested extension: calendar-year 2026 plot
+
+After the initial experiment, the user requested a final plot including the observed 2024–2025 trend and forecasts through 2026. Implemented as a separate `project-2026` command and `projection_2026/` artifacts, appended to the notebook and standalone reports. Future dates use an explicitly assumed published NYSE holiday schedule; dataset provenance and the historical calendar remain unverified. Observed prices stop on August 14, 2025. Everything later is a historical as-of projection, with no claimed 2026 actuals or accuracy. The original frozen 1/5/20-session evaluation remains separate.

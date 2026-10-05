@@ -1,0 +1,12 @@
+input = "gold_data_2015_25.csv"
+target = "GLD"
+train_end = "2021-12-31"
+validation_end = "2023-12-31"
+horizons = [1, 5, 20]
+orders = [0, 1, 2, 3]
+simulations = 10000
+seed = 706
+bootstrap_samples = 2000
+bootstrap_blocks = [20, 10, 40]
+expected_counts = [1760, 501, 405]
+output = "outputs"
