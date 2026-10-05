@@ -92,3 +92,6 @@ This adds a final section to `comparison.html` and `report.html`, and the notebo
 For this requested calendar-year view only, future dates **assume** the [published NYSE/NYSE Arca holiday schedule](https://ir.theice.com/press/news-details/2024/NYSE-Group-Announces-2025-2026-and-2027-Holiday-and-Early-Closings-Calendar/default.aspx), checked against the [2026 NYSE calendar](https://www.nyse.com/trade/hours-calendars). Weekends and full-day closures are excluded; early closes count as sessions. This does not verify the CSV's instrument or historical trading calendar. Exceptional closures and missing future observations are not modeled. The command deliberately supports only the supplied August 14, 2025 cutoff.
 
 The optional extension saves `projection_2026/forecast_2024_2026.png` and `.svg`, `forecasts.csv`, `observations.csv`, and `metadata.json` inside the run directory. It refits the already selected specifications, uses 10,000 paths per model, and keeps the original test and 20-step forecast records separate. On this run, December 2026 median projections are approximately **349.5 (ARIMA)** and **330.0 (GARCH)** in unverified GLD proxy units; their wide bands are more informative than those point values alone.
+
+## Manual Smoketest
+Manual Smoketest passed. The ipynb and all other scripts are running well manually. Data Reading is normal.
